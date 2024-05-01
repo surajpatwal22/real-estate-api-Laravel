@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\Api\PropertyController;
+use App\Http\Controllers\Admin\Api\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -14,6 +16,25 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
+Route::middleware('auth:sanctum')->group(function (){
+    Route::get('get_profile', [UserController::class,'getProfile']);
+    Route::post('update_profile', [UserController::class,'updateProfile']);
+    Route::post('logout', [UserController::class,'logout']);
+    Route::post('addProperty', [PropertyController::class,'addProperty']);
+    Route::post('updateProperty/{id}', [PropertyController::class,'update']);
+    Route::delete('deleteProperty/{id}', [PropertyController::class,'destroy']);
+
+
+
+
+
+
 });
+
+Route::post('signup',[UserController::class,'SignUp'])->name("signup");
+Route::post('login',[UserController::class,'login'])->name("login");
+Route::get('allPropertry', [PropertyController::class,'getallproperty']);
+Route::get('allPropertry/{id}', [PropertyController::class,'getproperty']);
+
+
+
