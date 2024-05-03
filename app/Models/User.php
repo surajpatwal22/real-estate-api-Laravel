@@ -20,7 +20,7 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
-        'password',
+        'password','contact','status','device_id','bio','image'
     ];
 
     /**
@@ -41,4 +41,14 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
+
+    protected $appends = ['picture_data'];
+
+
+    public function getPictureDataAttribute(){
+        return url(''.$this->image);
+    }
+    public function property() {
+        return $this->hasMany(Property::class);
+    }
 }
