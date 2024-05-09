@@ -94,4 +94,67 @@ class AgentController extends Controller
         }
     }
 
+    public function update(Request $request, $id){
+        $validator = Validator::make($request->all(),[
+            'user_id' => 'required|exists:users,id',
+            'email' => 'required',
+            'contact_no' => 'required',
+            'address' => 'required',
+            'state' => 'required',
+            'bio' => 'required',
+            'availability_status' => 'required',
+            'status' => 'required',
+        ]);
+        if($validator->fails()){
+            return redirect()->back()->withErrors($validator)->withInput();
+        }else{
+            $agent = Agent::find($id);
+            if (!$agent) {
+                return response()->json([
+                    "success" => false,
+                    "message" => "Agent not found.",
+                    "status" => 404
+                ]);
+            }
+    
+            $agent->user_id = $request->user_id;
+            $agent->email = $request->email;
+            $agent->contact_no = $request->contact_no;
+            $agent->address = $request->address;
+            $agent->state = $request->state;
+            $agent->bio = $request->bio;
+            $agent->availability = $request->availability_status;
+            $agent->agency_name = $request->agency_name;
+            $agent->license_number = $request->license_number;
+            $agent->experience_years = $request->experience_years;
+            $agent->status = $request->status;
+    
+            if ($request->image) {
+                $file = $request->image;
+                $imageName1 = $file->getClientOriginalName();
+                $imageName1 = str_replace(' ', '_', $imageName1);
+                $imagePath = public_path() . '/public/images/agents/image/';
+                $file->move($imagePath, $imageName1);
+                $agent->profile = 'public/storage/agents/image/' . $imageName1;
+            } 
+    
+            if ($request->aadhar_img) {
+                $file = $request->aadhar_img;
+                $imageName = $file->getClientOriginalName();
+                $imageName = str_replace(' ', '_', $imageName);
+                $imagePath = public_path() . '/public/images/agents/image/';
+                $file->move($imagePath, $imageName);
+                $agent->aadhar_img = 'public/storage/agents/image/' . $imageName;
+            } 
+            
+            $agent->update();
+    
+            return response()->json([
+                "success" => true,
+                "message" => "Agent updated successfully."
+            ]);
+        }
+    }
+    
+
 }
