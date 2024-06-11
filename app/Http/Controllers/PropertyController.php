@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Admin\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Like;
 use App\Models\Property;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 
 class PropertyController extends Controller
@@ -32,6 +35,7 @@ class PropertyController extends Controller
             'availability_status' => 'required',
             'furniture_status' => 'required',
             'status' => 'required',
+            'buyRentStatus' => 'required',
             'images' => '',
         ]);
         if($validator->fails()){
@@ -70,6 +74,7 @@ class PropertyController extends Controller
             $property->security = $request->security;
             $property->availability_status = $request->availability_status;
             $property->furniture_status = $request->furniture_status;
+            $property->rent_buy_status = $request->buyRentStatus;
             $property->status = 1;
             $data = [];
             if($request->hasfile('images')) {
@@ -119,13 +124,82 @@ class PropertyController extends Controller
         }
     }
 
+
+
+    public function sortproperty(Request $request){
+        $property = Property::orderBy('property_price', $request->sort)->get();
+        if(count($property)>0){
+            return response()->json([
+                'message'=>'properties retrieved Successfully',
+                'status'=>200,
+                'data'=>$property
+            ],200);
+        } else{
+            return response()->json([
+                'message'=>'No properties found ',
+                'status'=>404
+            ],404);
+        }
+    }
+
+
+   
+    public function getrentproperty(){
+        $property = Property::where('rent_buy_status','0')->get();
+        if(count($property)>0){
+            return response()->json([
+                'message'=>' rented properties retrieved Successfully',
+                'status'=>200,
+                'data'=>$property
+            ],200);
+        } else{
+            return response()->json([
+                'message'=>'No properties found ',
+                'status'=>404
+            ],404);
+        }
+    }
+
+    public function getbuyproperty(){
+        $property = Property::where('rent_buy_status','1')->get();
+        if(count($property)>0){
+            return response()->json([
+                'message'=>'  properties retrieved Successfully',
+                'status'=>200,
+                'data'=>$property
+            ],200);
+        } else{
+            return response()->json([
+                'message'=>'No properties found ',
+                'status'=>404
+            ],404);
+        }
+    }
+
     public function getproperty($id){
-        $property = Property::findOrFail($id);
+        $property = Property::find($id);
+        $user = User::where('id',$property->user_id)->first();
         if($property){
+            
+            $priceRange = [
+                $property->property_price * 0.9,
+                $property->property_price * 1.1  
+            ];
+    
+            $similarProperty = Property::where('subcategory_id',$property->subcategory_id)
+                ->whereBetween('property_price', $priceRange)
+                ->where('property_district',$property->property_district)
+                ->where('id', '!=', $property->id)
+                ->where('status','1') 
+                ->take(5) 
+                ->get();
+
             return response()->json([
                 'message'=>'property retrieved Successfully',
                 'status'=>200,
-                'property'=>$property
+                'property'=>$property,
+                'similarProperty'=>$similarProperty,
+                'agent' => $user
             ],200);
         } else {
             return response()->json([
@@ -135,12 +209,28 @@ class PropertyController extends Controller
         }
     }
 
+
+
+    public function searchproperty(Request $request){
+        $property = Property::where('property_district','LIKE','%'.$request->search . '%')->get();
+        if(count($property)>0){
+            return response()->json([
+                'message'=>'properties retrieved Successfully',
+                'status'=>200,
+                'data'=>$property
+            ],200);
+        } else{
+            return response()->json([
+                'message'=>'No properties found ',
+                'status'=>404
+            ],404);
+        }
+    }
+
     public function update(Request $request, $id)
     {
         $property = Property::findOrFail($id);
         if ($property) {
-            
-
             if ($request->filled('category_id')) {
                 $property->category_id = $request->category_id;
             }
@@ -226,6 +316,10 @@ class PropertyController extends Controller
                 $property->furniture_status = $request->furniture_status;
             }
 
+            if ($request->filled('buyRentStatus')) {
+                $property->rent_buy_status = $request->buyRentStatus;
+            }
+
 
             if($request->hasfile('images')) {
                 $data = [];
@@ -261,7 +355,7 @@ class PropertyController extends Controller
     
     public function destroy($id)
     {
-        $property = Property::findOrFail($id);
+        $property = Property::find($id);
       
         if($property){
             $property->delete();
@@ -282,5 +376,61 @@ class PropertyController extends Controller
         }
     }
 
+ 
+    public function like(Request $request){
+        $validator = Validator::make($request->all(),[
+            'property_id' => 'required',
+        ]);
+        if($validator->fails()){
+            return response()->json([
+                'error'=> $validator->errors(),
+                'status' => 400 ,
+                'success' => false
+            ]);
+        }else{
+            
+            $like = Like::where('property_id',$request->property_id)->where('user_id',Auth::user()->id)->first();
+            if($like){
+                $like->delete();
+                return response()->json([
+                    'message' => 'Property disliked successfully',
+                    'status' =>200,
+                    'success' =>true
+                ],200);
+            }else{
+                $like_create = Like::create([
+                    'property_id' => $request->property_id,
+                    'user_id' => Auth::user()->id,
+                ]);
+                if($like_create){
+                    return response()->json([
+                        'message' => ' Property liked successfully',
+                        'status' =>200,
+                        'success' =>true
+                    ],200);
+                }else{
+                    return response()->json([
+                        'message' => 'something went wrong',
+                        'status' =>400,
+                        'success' =>false
+                    ],400);
+                }
+            }
+        }
+    }
 
+    // @get authorised users liked property list 
+    public function userLikedPropertyList(){
+
+        $likeList = Property::whereHas('like',function($query){
+            $query->where('user_id',Auth::user()->id);
+        })->orderBy("created_at", "desc")->get();
+        return response()->json([
+            'message' => 'User liked property fetched successfully',
+            'status' => 200,
+            'success' => true,
+            'LikedProperty' => $likeList
+        ], 200);
+    }
+   
 }
