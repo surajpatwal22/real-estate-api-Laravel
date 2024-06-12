@@ -19,7 +19,6 @@ class PropertyController extends Controller
         $validator = Validator::make($request->all(),[
             'category_id' => 'required',
             'subcategory_id' => 'required',
-            'user_id' => 'required',
             'property_name' => 'required',
             'property_price' => 'required',
             'property_address' => 'required',
@@ -34,7 +33,6 @@ class PropertyController extends Controller
             'security_amt' => 'required',
             'availability_status' => 'required',
             'furniture_status' => 'required',
-            'status' => 'required',
             'buyRentStatus' => 'required',
             'images' => '',
         ]);
@@ -45,14 +43,15 @@ class PropertyController extends Controller
                 'success' => false
             ],400);
         }else{
+            $userid = Auth::user()->id;
             $property = new Property();
             $property->category_id = $request->category_id;
             $property->subcategory_id = $request->subcategory_id;
-            $property->user_id = $request->user_id;
+            $property->user_id = $userid;
             $property->property_name = $request->property_name;
             $property->property_price = $request->property_price;
             $property->property_address = $request->property_address;
-            $property->property_district = $request->property_district;
+            $property->property_district = strtolower($request->property_district);
             $property->property_state = $request->property_state;
             $property->property_pin = $request->property_pin;
             $property->property_long = $request->property_long;
@@ -75,7 +74,9 @@ class PropertyController extends Controller
             $property->availability_status = $request->availability_status;
             $property->furniture_status = $request->furniture_status;
             $property->rent_buy_status = $request->buyRentStatus;
-            $property->status = 1;
+            $property->property_description	 = $request->property_description	;
+            $property->owner_whatsapp = $request->owner_whatsapp;
+            $property->status = 2;
             $data = [];
             if($request->hasfile('images')) {
                 foreach($request->file('images') as $image) {
@@ -108,7 +109,7 @@ class PropertyController extends Controller
     }
 
     public function getallproperty(){
-        $property = Property::all();
+        $property = Property::with('review')->where('status','1')->OrderBy('created_at','desc')->get();
         
         if(count($property)>0){
             return response()->json([
@@ -204,6 +205,39 @@ class PropertyController extends Controller
         } else {
             return response()->json([
                 'message'=>'Property not Found',
+                'status'=>404
+            ],404);
+        }
+    }
+
+    
+    public function getcommercialproperty(){
+        $property = Property::where('category_id','1')->get();
+        if(count($property)>0){
+            return response()->json([
+                'message'=>'Commercial properties retrieved successfully',
+                'status'=>200,
+                'property'=>$property
+            ],200);
+        } else{
+            return response()->json([
+                'message'=>'No properties found ',
+                'status'=>404
+            ],404);
+        }
+    }
+
+    public function getresidentialproperty(){
+        $property = Property::where('category_id','2')->get();
+        if(count($property)>0){
+            return response()->json([
+                'message'=>'Resedential properties retrieved successfully',
+                'status'=>200,
+                'property'=>$property
+            ],200);
+        } else{
+            return response()->json([
+                'message'=>'No properties found ',
                 'status'=>404
             ],404);
         }
@@ -419,7 +453,7 @@ class PropertyController extends Controller
         }
     }
 
-    // @get authorised users liked property list 
+  
     public function userLikedPropertyList(){
 
         $likeList = Property::whereHas('like',function($query){
@@ -432,5 +466,113 @@ class PropertyController extends Controller
             'LikedProperty' => $likeList
         ], 200);
     }
+
+    // @get property based on user current location
+
+
+    public function findNearestProperties(Request $request)
+    {
+        // dd($request->all());
+        $validator = Validator::make($request->all(), [
+            'latitude' => 'required',
+            'longitude' => 'required',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Invalid input',
+                'status' => 400,
+                'success' => false
+            ], 400);
+        }else{
+            $latitude = $request->input('latitude');
+            $longitude = $request->input('longitude');
+            $radius = $request->input('radius', 5000); // radius in meter
+
+            $properties = $this->findNearestPropertiesHelper($latitude, $longitude, $radius);
+
+            return response()->json(
+                [
+                    "message" => "Properties retrieved succesfully",
+                    "status" => 200,
+                    "properties" => $properties
+                ]
+            );
+
+        }
+      
+    }
+
+    private function findNearestPropertiesHelper($latitude, $longitude, $radius)
+    {
+        $properties = Property::selectRaw(
+            "id, property_name, property_price, property_address, property_district, property_state, property_pin, property_lat, property_long, property_landmark, property_facing, owner_name, owner_contact,bulidup_area,floor,security_amt,society,no_of_beds,no_of_kitchen,no_of_bathroom,car_parking,water,invertor,security,availability_status,furniture_status,status,images,entry_date,reason,rent_buy_status,owner_whatsapp,property_description,
+        (6371000 * acos(
+            cos(radians(?)) * cos(radians(property_lat)) 
+            * cos(radians(property_long) - radians(?)) 
+            + sin(radians(?)) * sin(radians(property_lat))
+        )) AS distance", 
+            [$latitude, $longitude, $latitude]
+        )
+        ->where('status', '=', 1)
+        ->having("distance", "<", $radius)
+        ->orderBy("distance", 'asc')
+        ->offset(0)
+        ->limit(20)
+        ->get();
+
+        return $properties;
+    }
+
+    public function getAllLocality(){
+
+        $localities = Property::selectRaw('property_district, COUNT(*) as property_count')
+                          ->groupBy('property_district')->orderBy('property_count', 'desc')
+                          ->limit(10)
+                          ->get();
+
+
+        return response()->json([
+            'message' => 'Locality fetched successfully',
+            'status' => 200,
+            'success' => true,
+            'locality' => $localities
+        ], 200);
+
+    }
+
+   
+
+    public function getPropertiesByLocality(Request $request){
+
+        $validator = Validator::make($request->all(), [
+            'district' => 'required'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Invalid input',
+                'status' => 400,
+                'success' => false
+            ], 400);
+        }else{
+            $locality = $request->input('district');
+            $properties = Property::where('property_district', $locality)->get();
+            if ($properties->isEmpty()) {
+                return response()->json([
+                    'message' => 'No properties found in this district',
+                    'status' => 404,
+                    'success' => false,
+                ], 404);
+            }
+            return response()->json([
+                'message' => 'Properties fetched successfully',
+                'status' => 200,
+                'success' => true,
+                'properties' => $properties
+            ], 200);
+        }
+            
+        }
    
 }
