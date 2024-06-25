@@ -109,7 +109,7 @@ class PropertyController extends Controller
     }
 
     public function getallproperty(){
-        $property = Property::with('review')->where('status','1')->OrderBy('created_at','desc')->get();
+        $property = Property::with('review','subcategory')->where('status','1')->OrderBy('created_at','desc')->get();
         
         if(count($property)>0){
             return response()->json([
@@ -212,7 +212,7 @@ class PropertyController extends Controller
 
     
     public function getcommercialproperty(){
-        $property = Property::where('category_id','1')->get();
+        $property = Property::with('subcategory')->where('status','1')->where('category_id','1')->get();
         if(count($property)>0){
             return response()->json([
                 'message'=>'Commercial properties retrieved successfully',
@@ -222,13 +222,13 @@ class PropertyController extends Controller
         } else{
             return response()->json([
                 'message'=>'No properties found ',
-                'status'=>404
-            ],404);
+                'status'=>200
+            ],200);
         }
     }
 
     public function getresidentialproperty(){
-        $property = Property::where('category_id','2')->get();
+        $property = Property::with('subcategory')->where('status','1')->where('category_id','2')->get();
         if(count($property)>0){
             return response()->json([
                 'message'=>'Resedential properties retrieved successfully',
@@ -238,8 +238,8 @@ class PropertyController extends Controller
         } else{
             return response()->json([
                 'message'=>'No properties found ',
-                'status'=>404
-            ],404);
+                'status'=>200
+            ],200);
         }
     }
 
@@ -487,7 +487,7 @@ class PropertyController extends Controller
         }else{
             $latitude = $request->input('latitude');
             $longitude = $request->input('longitude');
-            $radius = $request->input('radius', 5000); // radius in meter
+            $radius = $request->input('radius', 5000); 
 
             $properties = $this->findNearestPropertiesHelper($latitude, $longitude, $radius);
 
@@ -561,9 +561,9 @@ class PropertyController extends Controller
             if ($properties->isEmpty()) {
                 return response()->json([
                     'message' => 'No properties found in this district',
-                    'status' => 404,
-                    'success' => false,
-                ], 404);
+                    'status' => 200,
+                    'success' => true,
+                ], 200);
             }
             return response()->json([
                 'message' => 'Properties fetched successfully',
@@ -574,5 +574,75 @@ class PropertyController extends Controller
         }
             
         }
+
+    public function getSearchData(Request $request){
+
+        $validator = Validator::make($request->all(), [
+            'buyRentStatus' => 'required',
+            'category_id' => 'required',
+            'address' => 'required',
+            'min_price' => 'required',
+            'max_price' => 'required',
+            'sub_category_id' => 'required'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => $validator->errors(),
+                'status' => 400,
+                'success' => false
+            ], 400);
+        }else{
+            $buyRentStatus = $request->input('buyRentStatus');
+            $category_id = $request->input('category_id');
+            $address = $request->input('address');
+            $min_price = $request->input('min_price');
+            $max_price = $request->input('max_price');
+            $sub_category_id = $request->input('sub_category_id');
+
+            $priceRange = [
+                $min_price,
+                $max_price  
+            ];
+            $addressParts = explode(',', $address);
+            // $country = trim($addressParts[count($addressParts) - 1]);
+            $stateAndPin = explode(' ', trim($addressParts[count($addressParts) - 2]));
+            $state = $stateAndPin[0];
+            $pin = isset($stateAndPin[1]) ? $stateAndPin[1] : '';
+            // dd($state,$pin);
+            $district = trim($addressParts[count($addressParts) - 3]);
+            // dd($district);
+            $localityParts = array_slice($addressParts, 0, count($addressParts) - 3);
+            $locality = implode(', ', array_map('trim', $localityParts));
+            // dd($locality);
+
+            $properties = Property::where('rent_buy_status', $buyRentStatus)
+            ->where('category_id', $category_id)
+            ->whereBetween('property_price', $priceRange)
+            ->where('subcategory_id', $sub_category_id)
+            ->where(function ($query) use ($locality, $district, $state, $pin) {
+                $query->where('property_address', 'like', '%' . $locality . '%')
+                      ->orWhere('property_district', 'like', '%' . $district . '%')
+                      ->orWhere('property_state', 'like', '%' . $state . '%')
+                      ->orWhere('property_pin', 'like', '%' . $pin . '%');
+            })
+            ->distinct()
+            ->get();
+
+            if ($properties->isEmpty()) {
+                return response()->json([
+                    'message' => 'No properties found in this category',
+                    'status' => 200,
+                    'success' => true,
+                ], 200);
+            }
+            return response()->json([
+                'message' => 'Properties fetched successfully',
+                'status' => 200,
+                'success' => true,
+                'properties' => $properties
+            ], 200);
+        }
+    }
    
 }
